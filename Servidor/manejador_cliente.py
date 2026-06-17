@@ -41,8 +41,14 @@ class ManejadorCliente:
             self._manejar_crear_sala(mensaje)
         elif tipo == Protocolo.JOIN_ROOM_REQUEST:
             self._manejar_unirse_sala(mensaje)
+        elif tipo == Protocolo.ADMIT_USER:
+            self._manejar_admitir(mensaje)
+        elif tipo == Protocolo.REJECT_USER:
+            self._manejar_rechazar(mensaje)
         elif tipo == Protocolo.CHAT_MESSAGE:
             self._manejar_chat(mensaje)
+        elif tipo == Protocolo.LEAVE_ROOM:
+            self._sala_actual = None
 
     def _manejar_login(self, mensaje):
         respuesta = self._auth_service.validar_login(
@@ -73,7 +79,8 @@ class ManejadorCliente:
                 (id_sala, mensaje["idHost"])
             )
             conexion.commit()
-            self._enviar({"type": "CREATE_ROOM", "status": "success", "codigo": mensaje["codigo"]})
+            self._sala_actual = mensaje["codigo"]
+            self._enviar({"type": "CREATE_ROOM", "status": "success", "codigo": mensaje["codigo"], "idSala": id_sala})
         except Exception as e:
             self._enviar({"type": "CREATE_ROOM", "status": "error", "message": str(e)})
 
@@ -97,9 +104,15 @@ class ManejadorCliente:
                     (sala["IdSala"], mensaje["idUsuario"])
                 )
                 conexion.commit()
+                self._sala_actual = mensaje["codigo"]
                 self._enviar({"type": "JOIN_ROOM_REQUEST", "status": "success",
                               "idSala": sala["IdSala"], "admitido": True})
             else:
+                cursor.execute(
+                    "SELECT Nombres FROM Usuarios WHERE IdUsuario = ?",
+                    (mensaje["idUsuario"],)
+                )
+                nombre_solicitante = cursor.fetchone()["Nombres"]
                 cursor.execute(
                     "INSERT INTO SolicitudesSala (IdSala, IdUsuario) VALUES (?, ?)",
                     (sala["IdSala"], mensaje["idUsuario"])
@@ -107,8 +120,64 @@ class ManejadorCliente:
                 conexion.commit()
                 self._enviar({"type": "JOIN_ROOM_REQUEST", "status": "success",
                               "idSala": sala["IdSala"], "admitido": False})
+                host = self._servidor.buscar_cliente_por_usuario(sala["IdHost"])
+                if host:
+                    host._enviar({
+                        "type": "WAITING_ROOM_UPDATE",
+                        "idSala": sala["IdSala"],
+                        "solicitanteId": mensaje["idUsuario"],
+                        "solicitanteNombre": nombre_solicitante
+                    })
         except Exception as e:
             self._enviar({"type": "JOIN_ROOM_REQUEST", "status": "error", "message": str(e)})
+
+    def _manejar_admitir(self, mensaje):
+        try:
+            bd = BaseDatos()
+            conexion = bd.conectar()
+            cursor = conexion.cursor()
+            cursor.execute(
+                "DELETE FROM SolicitudesSala WHERE IdSala = ? AND IdUsuario = ?",
+                (mensaje["idSala"], mensaje["idUsuario"])
+            )
+            cursor.execute(
+                "INSERT INTO ParticipantesSala (IdSala, IdUsuario, Estado) VALUES (?, ?, 'Admitido')",
+                (mensaje["idSala"], mensaje["idUsuario"])
+            )
+            cursor.execute("SELECT CodigoSala FROM Salas WHERE IdSala = ?", (mensaje["idSala"],))
+            codigo = cursor.fetchone()["CodigoSala"]
+            conexion.commit()
+            invitado = self._servidor.buscar_cliente_por_usuario(mensaje["idUsuario"])
+            if invitado:
+                invitado._sala_actual = codigo
+                invitado._enviar({
+                    "type": "ADMIT_USER",
+                    "status": "admitido",
+                    "idSala": mensaje["idSala"],
+                    "codigo": codigo
+                })
+        except Exception as e:
+            print(f"[ERROR] Admitir usuario: {e}")
+
+    def _manejar_rechazar(self, mensaje):
+        try:
+            bd = BaseDatos()
+            conexion = bd.conectar()
+            cursor = conexion.cursor()
+            cursor.execute(
+                "DELETE FROM SolicitudesSala WHERE IdSala = ? AND IdUsuario = ?",
+                (mensaje["idSala"], mensaje["idUsuario"])
+            )
+            conexion.commit()
+            invitado = self._servidor.buscar_cliente_por_usuario(mensaje["idUsuario"])
+            if invitado:
+                invitado._enviar({
+                    "type": "REJECT_USER",
+                    "status": "rechazado",
+                    "idSala": mensaje["idSala"]
+                })
+        except Exception as e:
+            print(f"[ERROR] Rechazar usuario: {e}")
 
     def _manejar_chat(self, mensaje):
         print(f"[CHAT] {mensaje.get('userName')}: {mensaje.get('message')}")
@@ -116,7 +185,11 @@ class ManejadorCliente:
 
     def _enviar(self, datos):
         try:
-            self._conexion.send(json.dumps(datos).encode("utf-8"))
+            if "__rid" in datos:
+                datos.pop("__rid")
+            if "_rid" in datos:
+                datos["_rid"] = datos.pop("_rid")
+            self._conexion.send((json.dumps(datos) + "\n").encode("utf-8"))
         except Exception as e:
             print(f"[ERROR] No se pudo enviar mensaje: {e}")
             self._conectado = False

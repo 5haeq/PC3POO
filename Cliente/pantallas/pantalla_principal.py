@@ -1,15 +1,23 @@
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox
 import random
 import string
 
 class PantallaPrincipal(tk.Frame):
-    def __init__(self, master, usuario, cliente_socket, on_cerrar_sesion):
+    def __init__(self, master, usuario, cliente_socket, on_cerrar_sesion, on_entrar_sala):
         super().__init__(master)
         self._usuario = usuario
         self._cliente_socket = cliente_socket
         self._on_cerrar_sesion = on_cerrar_sesion
+        self._on_entrar_sala = on_entrar_sala
+        self._registrar_callbacks()
         self._crear_widgets()
+
+    def _registrar_callbacks(self):
+        self._cliente_socket.registrar_callback("ADMIT_USER", self._admitido_en_sala)
+
+    def _limpiar_callbacks(self):
+        self._cliente_socket.remover_callback("ADMIT_USER")
 
     def _crear_widgets(self):
         tk.Label(self, text=f"Bienvenido, {self._usuario.nombres}",
@@ -24,7 +32,7 @@ class PantallaPrincipal(tk.Frame):
                   width=20, font=("Arial", 11), bg="#2196F3", fg="white").pack(pady=5)
         tk.Button(frame_botones, text="Unirse a Sala", command=self._unirse_sala,
                   width=20, font=("Arial", 11), bg="#FF9800", fg="white").pack(pady=5)
-        tk.Button(frame_botones, text="Cerrar Sesión", command=self._on_cerrar_sesion,
+        tk.Button(frame_botones, text="Cerrar Sesión", command=self._cerrar_sesion,
                   width=20, font=("Arial", 11), bg="#f44336", fg="white").pack(pady=(20, 5))
 
     def _crear_sala(self):
@@ -36,8 +44,7 @@ class PantallaPrincipal(tk.Frame):
             "idHost": self._usuario.id_usuario
         })
         if respuesta.get("status") == "success":
-            messagebox.showinfo("Sala Creada",
-                                f"Sala creada. Ya estás dentro.\nCódigo: {codigo}")
+            self._on_entrar_sala(codigo, True, respuesta["idSala"])
         else:
             messagebox.showerror("Error", respuesta.get("message", "Error al crear sala"))
 
@@ -65,13 +72,20 @@ class PantallaPrincipal(tk.Frame):
             })
             if respuesta.get("status") == "success":
                 if respuesta.get("admitido"):
-                    messagebox.showinfo("Ingresaste", "Te has unido a la sala.")
+                    self._on_entrar_sala(codigo, False, respuesta["idSala"])
                 else:
                     messagebox.showinfo("Solicitud Enviada",
-                                        "Solicitud enviada. Espera a que el host te admita.")
+                                        "Espera a que el host te admita.")
                 ventana.destroy()
             else:
                 messagebox.showerror("Error", respuesta.get("message", "Error al unirse"))
 
         tk.Button(ventana, text="Unirse", command=unirse,
                   width=15, font=("Arial", 10), bg="#4CAF50", fg="white").pack(pady=15)
+
+    def _admitido_en_sala(self, msg):
+        self._on_entrar_sala(msg["codigo"], False, msg["idSala"])
+
+    def _cerrar_sesion(self):
+        self._limpiar_callbacks()
+        self._on_cerrar_sesion()

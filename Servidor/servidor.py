@@ -47,6 +47,12 @@ class Servidor:
             if cliente._sala_actual == codigo_sala and cliente != emisor:
                 cliente._enviar(mensaje)
 
+    def buscar_cliente_por_usuario(self, id_usuario):
+        for cliente in self._clientes:
+            if cliente._usuario_actual and cliente._usuario_actual.get("idUsuario") == id_usuario:
+                return cliente
+        return None
+
 if __name__ == "__main__":
     servidor = Servidor()
     try:

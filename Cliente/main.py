@@ -5,6 +5,7 @@ import tkinter as tk
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from Cliente.pantallas.login import LoginFrame
 from Cliente.pantallas.pantalla_principal import PantallaPrincipal
+from Cliente.pantallas.pantalla_sala import PantallaSala
 
 class MainApp(tk.Tk):
     def __init__(self, host="127.0.0.1", puerto=5000):
@@ -28,13 +29,26 @@ class MainApp(tk.Tk):
         if self._frame_actual:
             self._frame_actual.destroy()
         self._frame_actual = PantallaPrincipal(
-            self, self._usuario, self._cliente_socket, self._cerrar_sesion
+            self, self._usuario, self._cliente_socket, self._cerrar_sesion, self._mostrar_sala
         )
         self._frame_actual.pack(fill=tk.BOTH, expand=True)
 
     def _on_login_exitoso(self, usuario, cliente_socket):
         self._usuario = usuario
         self._cliente_socket = cliente_socket
+        self._mostrar_principal()
+
+    def _mostrar_sala(self, codigo_sala, es_host, id_sala):
+        if self._frame_actual:
+            self._frame_actual.destroy()
+        self.geometry("800x500")
+        self._frame_actual = PantallaSala(
+            self, self._usuario, self._cliente_socket, codigo_sala, es_host, id_sala, self._salir_sala
+        )
+        self._frame_actual.pack(fill=tk.BOTH, expand=True)
+
+    def _salir_sala(self):
+        self.geometry("400x350")
         self._mostrar_principal()
 
     def _cerrar_sesion(self):
