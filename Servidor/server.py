@@ -1,65 +1,100 @@
+# Servidor/server.py
 import socket
 import threading
 import json
+import auth
 
-# Configuración del servidor
-HOST = '127.0.0.1'  # Localhost para pruebas
-PORT = 5000         # Puerto de escucha
+HOST = '127.0.0.1'
+PORT = 5000
+
+# Diccionario global de sesiones activas: { idUsuario: socket_conexion }
+clientes_conectados = {}
 
 def manejar_cliente(conexion, direccion):
-    print(f"[NUEVA CONEXIÓN] Cliente conectado desde {direccion}")
-    conectado = True
+    print(f"[CONEXIÓN] Nueva conexión establecida desde {direccion}")
+    id_usuario_actual = None
     
-    while conectado:
+    while True:
         try:
-            # Recibimos el mensaje (esperamos un JSON en formato string)
-            datos = conexion.recv(1024).decode('utf-8')
+            datos = conexion.recv(2048).decode('utf-8')
             if not datos:
                 break
             
-            # Convertimos el string a un diccionario de Python [cite: 137-138]
             mensaje = json.loads(datos)
-            tipo_mensaje = mensaje.get("type")
+            tipo = mensaje.get("type")
             
-            # Evaluamos el protocolo de comunicación [cite: 66, 139]
-            if tipo_mensaje == "LOGIN_REQUEST":
-                print(f"[*] Intento de login recibido: {mensaje['correo']}")
-                
-                # AQUI IRÁ LA VALIDACIÓN CON LA BASE DE DATOS MÁS ADELANTE [cite: 140]
-                # Por ahora simulamos una respuesta exitosa
-                respuesta = {
-                    "type": "LOGIN_RESPONSE",
-                    "status": "success",
-                    "idUsuario": 1,
-                    "nombres": "Luis Tasayco",
-                    "rol": "Host"
-                }
-                
-                # Enviamos la respuesta de vuelta al cliente [cite: 141]
+            if tipo == "LOGIN_REQUEST":
+                res = auth.validar_login(mensaje["correo"], mensaje["clave"])
+                if res["status"] == "success":
+                    id_usuario_actual = res["data"]["id"]
+                    clientes_conectados[id_usuario_actual] = conexion
+                    respuesta = {
+                        "type": "LOGIN_RESPONSE",
+                        "status": "success",
+                        "idUsuario": id_usuario_actual,
+                        "nombres": res["data"]["nombre"],
+                        "rol": res["data"]["rol"]
+                    }
+                else:
+                    respuesta = {"type": "LOGIN_RESPONSE", "status": "error", "message": res["message"]}
                 conexion.send(json.dumps(respuesta).encode('utf-8'))
                 
-        except json.JSONDecodeError:
-            print("[ERROR] Formato JSON inválido recibido.")
-        except ConnectionResetError:
+            elif tipo == "CREATE_ROOM":
+                auth.registrar_sala(mensaje["roomCode"], mensaje["userId"])
+                respuesta = {"type": "ROOM_CREATED", "status": "success", "roomCode": mensaje["roomCode"]}
+                conexion.send(json.dumps(respuesta).encode('utf-8'))
+                
+            elif tipo == "JOIN_ROOM_REQUEST":
+                res = auth.registrar_solicitud(mensaje["roomCode"], mensaje["userId"], mensaje["userName"])
+                if res["status"] == "success":
+                    # 1. Notificar al invitado que su estado pasó a espera [cite: 20]
+                    respuesta_invitado = {"type": "WAIT_FOR_HOST", "status": "pending"}
+                    conexion.send(json.dumps(respuesta_invitado).encode('utf-8'))
+                    
+                    # 2. Notificar en tiempo real al Host si se encuentra en red 
+                    id_host = res["id_host"]
+                    if id_host in clientes_conectados:
+                        notif_host = {
+                            "type": "WAITING_ROOM_UPDATE",
+                            "userIdPendiente": mensaje["userId"],
+                            "nombresPendiente": mensaje["userName"]
+                        }
+                        clientes_conectados[id_host].send(json.dumps(notif_host).encode('utf-8'))
+                else:
+                    respuesta = {"type": "ROOM_REJECTED", "message": res["message"]}
+                    conexion.send(json.dumps(respuesta).encode('utf-8'))
+                    
+            elif tipo == "ADMIT_USER":
+                id_pendiente = mensaje["userIdPendiente"]
+                accion = mensaje["action"] # "accept" o "reject"
+                res = auth.actualizar_solicitud(id_pendiente, accion)
+                
+                if res["status"] == "success":
+                    if id_pendiente in clientes_conectados:
+                        tipo_notif = "ROOM_JOINED" if accion == "accept" else "ROOM_REJECTED"
+                        notif_invitado = {"type": tipo_notif, "roomCode": res["sala"]}
+                        clientes_conectados[id_pendiente].send(json.dumps(notif_invitado).encode('utf-8'))
+                        
+        except (ConnectionResetError, json.JSONDecodeError):
             break
 
-    print(f"[DESCONEXIÓN] Cliente {direccion} se ha desconectado.")
+    # Limpieza al desconectar el cliente
+    if id_usuario_actual in clientes_conectados:
+        del clientes_conectados[id_usuario_actual]
+    print(f"[DESCONEXIÓN] El cliente {direccion} ha cerrado la sesión.")
     conexion.close()
 
 def iniciar_servidor():
-    servidor = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # TCP [cite: 22]
+    servidor = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    servidor.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     servidor.bind((HOST, PORT))
     servidor.listen()
-    print(f"[ESCUCHANDO] Servidor activo en {HOST}:{PORT}")
+    print(f"[ESCUCHANDO] Servidor de salas activo en {HOST}:{PORT}")
     
     while True:
-        # El servidor espera indefinidamente nuevas conexiones [cite: 133-134]
         conexion, direccion = servidor.accept()
-        # Creamos un hilo independiente para cada cliente [cite: 135]
         hilo = threading.Thread(target=manejar_cliente, args=(conexion, direccion))
         hilo.start()
-        print(f"[HILOS ACTIVOS] {threading.active_count() - 1}")
 
 if __name__ == "__main__":
-    print("[INICIANDO] Levantando servidor...")
     iniciar_servidor()

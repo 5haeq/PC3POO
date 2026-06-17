@@ -1,5 +1,6 @@
 # Cliente/main.py
-import ui_views
+from ui_views import AppZoom
 
 if __name__ == "__main__":
-    ui_views.mostrar_pantalla_login()
+    app = AppZoom()
+    app.mainloop()
