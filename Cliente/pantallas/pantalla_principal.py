@@ -84,7 +84,7 @@ class PantallaPrincipal(tk.Frame):
                   width=15, font=("Arial", 10), bg="#4CAF50", fg="white").pack(pady=15)
 
     def _admitido_en_sala(self, msg):
-        self._on_entrar_sala(msg["codigo"], False, msg["idSala"])
+        self.after(0, self._on_entrar_sala, msg["codigo"], False, msg["idSala"])
 
     def _cerrar_sesion(self):
         self._limpiar_callbacks()

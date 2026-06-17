@@ -70,8 +70,9 @@ class PantallaSala(tk.Frame):
             self._cliente_socket.remover_callback("WAITING_ROOM_UPDATE")
 
     def _nuevo_solicitante(self, msg):
-        uid = msg["solicitanteId"]
-        nombre = msg["solicitanteNombre"]
+        self.after(0, self._agregar_solicitante, msg["solicitanteId"], msg["solicitanteNombre"])
+
+    def _agregar_solicitante(self, uid, nombre):
         self._solicitantes[uid] = {"nombre": nombre}
         self._lista_espera.insert(tk.END, f"{nombre} (ID: {uid})")
 
@@ -118,7 +119,7 @@ class PantallaSala(tk.Frame):
 
     def _recibir_mensaje(self, msg):
         if msg.get("userName") != self._usuario.nombres:
-            self._agregar_mensaje(f"{msg['userName']}: {msg['message']}")
+            self.after(0, self._agregar_mensaje, f"{msg['userName']}: {msg['message']}")
 
     def _agregar_mensaje(self, texto):
         self._chat_text.config(state=tk.NORMAL)
