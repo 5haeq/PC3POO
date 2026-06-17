@@ -1,5 +1,8 @@
+import os
+import sys
 import socket
 import threading
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from Servidor.manejador_cliente import ManejadorCliente
 from Servidor.base_datos import BaseDatos
 
