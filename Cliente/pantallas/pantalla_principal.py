@@ -37,7 +37,7 @@ class PantallaPrincipal(tk.Frame):
         })
         if respuesta.get("status") == "success":
             messagebox.showinfo("Sala Creada",
-                                f"Sala creada exitosamente.\nCódigo: {codigo}")
+                                f"Sala creada. Ya estás dentro.\nCódigo: {codigo}")
         else:
             messagebox.showerror("Error", respuesta.get("message", "Error al crear sala"))
 
@@ -64,8 +64,11 @@ class PantallaPrincipal(tk.Frame):
                 "idUsuario": self._usuario.id_usuario
             })
             if respuesta.get("status") == "success":
-                messagebox.showinfo("Solicitud Enviada",
-                                    "Solicitud enviada. Espera a que el host te admita.")
+                if respuesta.get("admitido"):
+                    messagebox.showinfo("Ingresaste", "Te has unido a la sala.")
+                else:
+                    messagebox.showinfo("Solicitud Enviada",
+                                        "Solicitud enviada. Espera a que el host te admita.")
                 ventana.destroy()
             else:
                 messagebox.showerror("Error", respuesta.get("message", "Error al unirse"))

@@ -67,6 +67,11 @@ class ManejadorCliente:
                 "INSERT INTO Salas (CodigoSala, Nombre, IdHost) VALUES (?, ?, ?)",
                 (mensaje["codigo"], mensaje["nombre"], mensaje["idHost"])
             )
+            id_sala = cursor.lastrowid
+            cursor.execute(
+                "INSERT INTO ParticipantesSala (IdSala, IdUsuario, Estado) VALUES (?, ?, 'Admitido')",
+                (id_sala, mensaje["idHost"])
+            )
             conexion.commit()
             self._enviar({"type": "CREATE_ROOM", "status": "success", "codigo": mensaje["codigo"]})
         except Exception as e:
@@ -86,13 +91,22 @@ class ManejadorCliente:
                 self._enviar({"type": "JOIN_ROOM_REQUEST", "status": "error",
                               "message": "Sala no encontrada o inactiva."})
                 return
-            cursor.execute(
-                "INSERT INTO SolicitudesSala (IdSala, IdUsuario) VALUES (?, ?)",
-                (sala["IdSala"], mensaje["idUsuario"])
-            )
-            conexion.commit()
-            self._enviar({"type": "JOIN_ROOM_REQUEST", "status": "success",
-                          "idSala": sala["IdSala"]})
+            if sala["IdHost"] == mensaje["idUsuario"]:
+                cursor.execute(
+                    "INSERT INTO ParticipantesSala (IdSala, IdUsuario, Estado) VALUES (?, ?, 'Admitido')",
+                    (sala["IdSala"], mensaje["idUsuario"])
+                )
+                conexion.commit()
+                self._enviar({"type": "JOIN_ROOM_REQUEST", "status": "success",
+                              "idSala": sala["IdSala"], "admitido": True})
+            else:
+                cursor.execute(
+                    "INSERT INTO SolicitudesSala (IdSala, IdUsuario) VALUES (?, ?)",
+                    (sala["IdSala"], mensaje["idUsuario"])
+                )
+                conexion.commit()
+                self._enviar({"type": "JOIN_ROOM_REQUEST", "status": "success",
+                              "idSala": sala["IdSala"], "admitido": False})
         except Exception as e:
             self._enviar({"type": "JOIN_ROOM_REQUEST", "status": "error", "message": str(e)})
 
