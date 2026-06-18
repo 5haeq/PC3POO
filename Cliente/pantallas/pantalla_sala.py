@@ -1,5 +1,8 @@
+import base64
+import os
+import threading
 import tkinter as tk
-from tkinter import scrolledtext
+from tkinter import filedialog, scrolledtext
 
 class PantallaSala(tk.Frame):
     def __init__(self, master, usuario, cliente_socket, codigo_sala, es_host, id_sala, on_salir):
@@ -10,6 +13,9 @@ class PantallaSala(tk.Frame):
         self._es_host = es_host
         self._id_sala = id_sala
         self._on_salir = on_salir
+        self._file_recv = {}
+        self._download_dir = os.path.join(os.path.dirname(__file__), "..", "descargas")
+        os.makedirs(self._download_dir, exist_ok=True)
         self._crear_widgets()
         self._registrar_callbacks()
 
@@ -54,18 +60,26 @@ class PantallaSala(tk.Frame):
         self._entrada_msg.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self._entrada_msg.bind("<Return>", lambda e: self._enviar_mensaje())
         tk.Button(frame_input, text="Enviar", command=self._enviar_mensaje,
-                  bg="#2196F3", fg="white").pack(side=tk.RIGHT, padx=(5, 0))
+                  bg="#2196F3", fg="white").pack(side=tk.RIGHT, padx=(2, 0))
+        tk.Button(frame_input, text="📎 Archivo", command=self._enviar_archivo,
+                  bg="#9C27B0", fg="white").pack(side=tk.RIGHT, padx=(0, 2))
 
         tk.Button(self, text="Salir de la Sala", command=self._salir,
                   bg="#f44336", fg="white", font=("Arial", 10)).pack(pady=10)
 
     def _registrar_callbacks(self):
         self._cliente_socket.registrar_callback("CHAT_MESSAGE", self._recibir_mensaje)
+        self._cliente_socket.registrar_callback("FILE_START", self._recibir_file_start)
+        self._cliente_socket.registrar_callback("FILE_CHUNK", self._recibir_file_chunk)
+        self._cliente_socket.registrar_callback("FILE_END", self._recibir_file_end)
         if self._es_host:
             self._cliente_socket.registrar_callback("WAITING_ROOM_UPDATE", self._nuevo_solicitante)
 
     def _limpiar_callbacks(self):
         self._cliente_socket.remover_callback("CHAT_MESSAGE")
+        self._cliente_socket.remover_callback("FILE_START")
+        self._cliente_socket.remover_callback("FILE_CHUNK")
+        self._cliente_socket.remover_callback("FILE_END")
         if self._es_host:
             self._cliente_socket.remover_callback("WAITING_ROOM_UPDATE")
 
@@ -126,6 +140,74 @@ class PantallaSala(tk.Frame):
         self._chat_text.insert(tk.END, texto + "\n")
         self._chat_text.see(tk.END)
         self._chat_text.config(state=tk.DISABLED)
+
+    def _enviar_archivo(self):
+        ruta = filedialog.askopenfilename(title="Seleccionar archivo")
+        if not ruta:
+            return
+        nombre = os.path.basename(ruta)
+        tamano = os.path.getsize(ruta)
+        self._agregar_mensaje(f"📤 Enviando: {nombre} ({tamano} bytes)...")
+        threading.Thread(target=self._enviar_archivo_thread, args=(ruta, nombre, tamano), daemon=True).start()
+
+    def _enviar_archivo_thread(self, ruta, nombre, tamano):
+        try:
+            CHUNK_SIZE = 4096
+            with open(ruta, "rb") as f:
+                datos = base64.b64encode(f.read()).decode()
+            self._cliente_socket.enviar({
+                "type": "FILE_START",
+                "roomCode": self._codigo_sala,
+                "fileName": nombre,
+                "fileSize": tamano,
+                "userName": self._usuario.nombres
+            })
+            for i in range(0, len(datos), CHUNK_SIZE):
+                self._cliente_socket.enviar({
+                    "type": "FILE_CHUNK",
+                    "roomCode": self._codigo_sala,
+                    "fileName": nombre,
+                    "data": datos[i:i + CHUNK_SIZE]
+                })
+            self._cliente_socket.enviar({
+                "type": "FILE_END",
+                "roomCode": self._codigo_sala,
+                "fileName": nombre
+            })
+            self.after(0, self._agregar_mensaje, f"✅ Archivo enviado: {nombre}")
+        except Exception as e:
+            self.after(0, self._agregar_mensaje, f"❌ Error al enviar {nombre}: {e}")
+
+    def _recibir_file_start(self, msg):
+        if msg.get("userName") == self._usuario.nombres:
+            return
+        rid = msg["fileName"]
+        self._file_recv[rid] = {
+            "name": rid,
+            "size": msg["fileSize"],
+            "data": "",
+            "user": msg["userName"]
+        }
+        self.after(0, self._agregar_mensaje, f"📥 Recibiendo: {rid} ({msg['fileSize']} bytes) de {msg['userName']}...")
+
+    def _recibir_file_chunk(self, msg):
+        nombre = msg.get("fileName")
+        if nombre and nombre in self._file_recv:
+            self._file_recv[nombre]["data"] += msg["data"]
+
+    def _recibir_file_end(self, msg):
+        rid = msg["fileName"]
+        info = self._file_recv.pop(rid, None)
+        if not info:
+            return
+        try:
+            datos = base64.b64decode(info["data"])
+            ruta = os.path.join(self._download_dir, rid)
+            with open(ruta, "wb") as f:
+                f.write(datos)
+            self.after(0, self._agregar_mensaje, f"✅ Archivo recibido: {rid} (guardado en descargas/)")
+        except Exception as e:
+            self.after(0, self._agregar_mensaje, f"❌ Error al guardar {rid}: {e}")
 
     def _salir(self):
         self._cliente_socket.enviar({"type": "LEAVE_ROOM", "roomCode": self._codigo_sala})

@@ -47,6 +47,8 @@ class ManejadorCliente:
             self._manejar_rechazar(mensaje)
         elif tipo == Protocolo.CHAT_MESSAGE:
             self._manejar_chat(mensaje)
+        elif tipo in (Protocolo.FILE_START, Protocolo.FILE_CHUNK, Protocolo.FILE_END):
+            self._servidor.reenviar_a_sala(mensaje.get("roomCode"), mensaje, self)
         elif tipo == Protocolo.LEAVE_ROOM:
             self._sala_actual = None
 
