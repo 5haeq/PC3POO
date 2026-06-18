@@ -16,13 +16,19 @@ class ManejadorCliente:
 
     def iniciar(self):
         print(f"[NUEVA CONEXIÓN] Cliente conectado desde {self._direccion}")
+        buffer = ""
         while self._conectado:
             try:
                 datos = self._conexion.recv(4096).decode("utf-8")
                 if not datos:
                     break
-                mensaje = json.loads(datos)
-                self._procesar_mensaje(mensaje)
+                buffer += datos
+                while "\n" in buffer:
+                    linea, buffer = buffer.split("\n", 1)
+                    if not linea.strip():
+                        continue
+                    mensaje = json.loads(linea)
+                    self._procesar_mensaje(mensaje)
             except json.JSONDecodeError:
                 print("[ERROR] Formato JSON inválido recibido")
             except ConnectionResetError:

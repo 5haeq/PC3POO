@@ -152,7 +152,7 @@ class PantallaSala(tk.Frame):
 
     def _enviar_archivo_thread(self, ruta, nombre, tamano):
         try:
-            CHUNK_SIZE = 4096
+            CHUNK_SIZE = 1500
             with open(ruta, "rb") as f:
                 datos = base64.b64encode(f.read()).decode()
             self._cliente_socket.enviar({
