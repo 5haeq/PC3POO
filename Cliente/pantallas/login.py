@@ -55,7 +55,7 @@ class LoginFrame(tk.Frame):
                     respuesta["rol"]
                 )
                 messagebox.showinfo("Éxito", f"Bienvenido, {usuario.nombres}")
-                self._on_login_exitoso(usuario, self._cliente_socket)
+                self.after(0, self._on_login_exitoso, usuario, self._cliente_socket)
             else:
                 self._mensaje_error.config(text=respuesta.get("message", "Error desconocido"))
         except ConnectionError as e:
