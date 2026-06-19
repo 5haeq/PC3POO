@@ -55,6 +55,8 @@ class ManejadorCliente:
             self._manejar_chat(mensaje)
         elif tipo in (Protocolo.FILE_START, Protocolo.FILE_CHUNK, Protocolo.FILE_END):
             self._servidor.reenviar_a_sala(mensaje.get("roomCode"), mensaje, self)
+        elif tipo in (Protocolo.CAMERA_FRAME, Protocolo.VIDEO_START, Protocolo.VIDEO_STOP):
+            self._servidor.reenviar_a_sala(mensaje.get("roomCode"), mensaje, self)
         elif tipo == Protocolo.LEAVE_ROOM:
             self._sala_actual = None
 

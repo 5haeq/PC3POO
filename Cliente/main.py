@@ -41,7 +41,7 @@ class MainApp(tk.Tk):
     def _mostrar_sala(self, codigo_sala, es_host, id_sala):
         if self._frame_actual:
             self._frame_actual.destroy()
-        self.geometry("800x500")
+        self.geometry("900x600")
         self._frame_actual = PantallaSala(
             self, self._usuario, self._cliente_socket, codigo_sala, es_host, id_sala, self._salir_sala
         )

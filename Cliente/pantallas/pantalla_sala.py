@@ -1,8 +1,19 @@
 import base64
 import os
+import shutil
+import subprocess
 import threading
+import time
 import tkinter as tk
 from tkinter import filedialog, scrolledtext
+
+try:
+    import cv2
+    _BACKEND_VIDEO = "opencv"
+except ImportError:
+    _BACKEND_VIDEO = "ffmpeg" if shutil.which("ffmpeg") else None
+
+from Cliente.pantallas.pantalla_video import PanelVideo
 
 class PantallaSala(tk.Frame):
     def __init__(self, master, usuario, cliente_socket, codigo_sala, es_host, id_sala, on_salir):
@@ -22,6 +33,32 @@ class PantallaSala(tk.Frame):
     def _crear_widgets(self):
         tk.Label(self, text=f"Sala: {self._codigo_sala}",
                  font=("Arial", 12, "bold")).pack(pady=(10, 5))
+
+        # === VIDEO SECTION ===
+        self._frame_video_container = tk.Frame(self, bg="#1a1a1a", height=200)
+        self._frame_video_container.pack(fill=tk.X, padx=10, pady=(0, 5))
+        self._frame_video_container.pack_propagate(False)
+
+        self._frame_video_panels = tk.Frame(self._frame_video_container, bg="#1a1a1a")
+        self._frame_video_panels.pack(fill=tk.BOTH, expand=True)
+
+        self._frame_controles = tk.Frame(self)
+        self._frame_controles.pack(fill=tk.X, padx=10, pady=(0, 5))
+        self._btn_camara = tk.Button(
+            self._frame_controles, text="📷 Iniciar Cámara",
+            command=self._toggle_camara, bg="#4CAF50", fg="white", width=16
+        )
+        self._btn_camara.pack()
+        self._label_cam_status = tk.Label(
+            self._frame_controles, text="", fg="#888", font=("Arial", 8)
+        )
+        self._label_cam_status.pack(side=tk.LEFT, padx=(5, 0))
+
+        self._paneles_video = {}
+        self._camara_activa = False
+        self._capturando = False
+        self._video_panel_local = None
+        self._video_proc = None
 
         frame_principal = tk.Frame(self)
         frame_principal.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
@@ -72,6 +109,9 @@ class PantallaSala(tk.Frame):
         self._cliente_socket.registrar_callback("FILE_START", self._recibir_file_start)
         self._cliente_socket.registrar_callback("FILE_CHUNK", self._recibir_file_chunk)
         self._cliente_socket.registrar_callback("FILE_END", self._recibir_file_end)
+        self._cliente_socket.registrar_callback("CAMERA_FRAME", self._on_camera_frame)
+        self._cliente_socket.registrar_callback("VIDEO_START", self._on_video_start)
+        self._cliente_socket.registrar_callback("VIDEO_STOP", self._on_video_stop)
         if self._es_host:
             self._cliente_socket.registrar_callback("WAITING_ROOM_UPDATE", self._nuevo_solicitante)
 
@@ -80,6 +120,9 @@ class PantallaSala(tk.Frame):
         self._cliente_socket.remover_callback("FILE_START")
         self._cliente_socket.remover_callback("FILE_CHUNK")
         self._cliente_socket.remover_callback("FILE_END")
+        self._cliente_socket.remover_callback("CAMERA_FRAME")
+        self._cliente_socket.remover_callback("VIDEO_START")
+        self._cliente_socket.remover_callback("VIDEO_STOP")
         if self._es_host:
             self._cliente_socket.remover_callback("WAITING_ROOM_UPDATE")
 
@@ -140,6 +183,184 @@ class PantallaSala(tk.Frame):
         self._chat_text.insert(tk.END, texto + "\n")
         self._chat_text.see(tk.END)
         self._chat_text.config(state=tk.DISABLED)
+
+    def _toggle_camara(self):
+        if not _BACKEND_VIDEO:
+            self._agregar_mensaje("❌ No hay backend de cámara disponible. Instala 'opencv-python' o 'ffmpeg'.")
+            return
+        if self._camara_activa:
+            self._detener_captura()
+        else:
+            self._iniciar_captura()
+
+    def _iniciar_captura(self):
+        if self._capturando:
+            return
+        self._capturando = True
+        self._camara_activa = True
+        self._btn_camara.config(text="📷 Detener Cámara", bg="#f44336")
+        self._label_cam_status.config(text="Iniciando cámara...")
+
+        self._video_panel_local = PanelVideo(
+            self._frame_video_panels, usuario_nombre=f"{self._usuario.nombres} (Tú)",
+            width=240, height=180
+        )
+        self._video_panel_local.pack(side=tk.LEFT, padx=2)
+
+        self._cliente_socket.enviar({
+            "type": "VIDEO_START",
+            "roomCode": self._codigo_sala,
+            "userName": self._usuario.nombres
+        })
+
+        threading.Thread(target=self._capturar_y_enviar, daemon=True).start()
+
+    def _capturar_y_enviar(self):
+        try:
+            if _BACKEND_VIDEO == "opencv":
+                self._capturar_con_opencv()
+            else:
+                self._capturar_con_ffmpeg()
+        except Exception as e:
+            self.after(0, self._agregar_mensaje, f"❌ Error de cámara: {e}")
+            self.after(0, self._detener_captura)
+
+    def _capturar_con_opencv(self):
+        cap = cv2.VideoCapture(0)
+        if not cap.isOpened():
+            self.after(0, self._agregar_mensaje, "❌ No se pudo abrir la cámara.")
+            self.after(0, self._detener_captura)
+            return
+
+        self.after(0, lambda: self._label_cam_status.config(text="Cámara activa"))
+        while self._capturando and self._cliente_socket._conectado:
+            ret, frame = cap.read()
+            if not ret:
+                continue
+
+            frame = cv2.resize(frame, (320, 240))
+            _, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 50])
+            datos_b64 = base64.b64encode(buffer).decode()
+
+            self._cliente_socket.enviar({
+                "type": "CAMERA_FRAME",
+                "roomCode": self._codigo_sala,
+                "userName": self._usuario.nombres,
+                "data": datos_b64
+            })
+
+            self.after(0, lambda b=datos_b64: self._video_panel_local.actualizar_frame(b)
+                       if self._video_panel_local else None)
+
+            time.sleep(0.1)
+
+        cap.release()
+
+    def _capturar_con_ffmpeg(self):
+        proc = subprocess.Popen(
+            ["ffmpeg", "-f", "v4l2", "-video_size", "320x240",
+             "-i", "/dev/video0", "-f", "image2pipe",
+             "-vcodec", "mjpeg", "-r", "15",
+             "-loglevel", "quiet", "-"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+        )
+        self._video_proc = proc
+
+        self.after(0, lambda: self._label_cam_status.config(text="Cámara activa"))
+        buffer = b""
+        while self._capturando and self._cliente_socket._conectado:
+            try:
+                datos = proc.stdout.read(4096)
+            except ValueError:
+                break
+            if not datos:
+                break
+            buffer += datos
+
+            while True:
+                start = buffer.find(b'\xff\xd8')
+                if start == -1:
+                    break
+                end = buffer.find(b'\xff\xd9', start)
+                if end == -1:
+                    break
+                jpeg_data = buffer[start:end + 2]
+                buffer = buffer[end + 2:]
+
+                datos_b64 = base64.b64encode(jpeg_data).decode()
+                self._cliente_socket.enviar({
+                    "type": "CAMERA_FRAME",
+                    "roomCode": self._codigo_sala,
+                    "userName": self._usuario.nombres,
+                    "data": datos_b64
+                })
+
+                self.after(0, lambda b=datos_b64: self._video_panel_local.actualizar_frame(b)
+                           if self._video_panel_local else None)
+
+        try:
+            proc.terminate()
+        except ProcessLookupError:
+            pass
+
+    def _detener_captura(self):
+        self._capturando = False
+        self._camara_activa = False
+        self._btn_camara.config(text="📷 Iniciar Cámara", bg="#4CAF50")
+        self._label_cam_status.config(text="")
+
+        if self._video_proc:
+            self._video_proc.terminate()
+            self._video_proc = None
+
+        if self._video_panel_local:
+            self._video_panel_local.destroy()
+            self._video_panel_local = None
+
+        self._cliente_socket.enviar({
+            "type": "VIDEO_STOP",
+            "roomCode": self._codigo_sala,
+            "userName": self._usuario.nombres
+        })
+
+    def _on_video_start(self, msg):
+        user = msg.get("userName", "")
+        if user == self._usuario.nombres:
+            return
+        self.after(0, self._agregar_panel_remoto, user)
+
+    def _agregar_panel_remoto(self, user):
+        if user in self._paneles_video:
+            return
+        panel = PanelVideo(
+            self._frame_video_panels, usuario_nombre=user,
+            width=240, height=180
+        )
+        panel.pack(side=tk.LEFT, padx=2)
+        self._paneles_video[user] = panel
+
+    def _on_video_stop(self, msg):
+        user = msg.get("userName", "")
+        if user == self._usuario.nombres:
+            return
+        self.after(0, self._remover_panel_remoto, user)
+
+    def _remover_panel_remoto(self, user):
+        panel = self._paneles_video.pop(user, None)
+        if panel:
+            panel.destroy()
+
+    def _on_camera_frame(self, msg):
+        user = msg.get("userName", "")
+        if user == self._usuario.nombres:
+            return
+        datos = msg.get("data", "")
+        self.after(0, self._actualizar_frame_remoto, user, datos)
+
+    def _actualizar_frame_remoto(self, user, datos_b64):
+        panel = self._paneles_video.get(user)
+        if panel:
+            panel.actualizar_frame(datos_b64)
 
     def _enviar_archivo(self):
         ruta = filedialog.askopenfilename(title="Seleccionar archivo")
@@ -210,6 +431,8 @@ class PantallaSala(tk.Frame):
             self.after(0, self._agregar_mensaje, f"❌ Error al guardar {rid}: {e}")
 
     def _salir(self):
+        if self._camara_activa:
+            self._detener_captura()
         self._cliente_socket.enviar({"type": "LEAVE_ROOM", "roomCode": self._codigo_sala})
         self._limpiar_callbacks()
         self._on_salir()
