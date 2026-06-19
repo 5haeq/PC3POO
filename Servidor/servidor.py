@@ -14,6 +14,7 @@ class Servidor:
         self._activo = False
         self._clientes = []
         self._salas = {}
+        self._lock = threading.Lock()
 
     def iniciar(self):
         bd = BaseDatos()
@@ -30,7 +31,8 @@ class Servidor:
             try:
                 conexion, direccion = self._socket.accept()
                 manejador = ManejadorCliente(self, conexion, direccion)
-                self._clientes.append(manejador)
+                with self._lock:
+                    self._clientes.append(manejador)
                 hilo = threading.Thread(target=manejador.iniciar, daemon=True)
                 hilo.start()
                 print(f"[HILOS ACTIVOS] {threading.active_count() - 1}")
@@ -42,15 +44,22 @@ class Servidor:
         if self._socket:
             self._socket.close()
 
+    def remover_cliente(self, cliente):
+        with self._lock:
+            if cliente in self._clientes:
+                self._clientes.remove(cliente)
+
     def reenviar_a_sala(self, codigo_sala, mensaje, emisor=None):
-        for cliente in self._clientes:
-            if cliente._sala_actual == codigo_sala and cliente != emisor:
-                cliente._enviar(mensaje)
+        with self._lock:
+            for cliente in self._clientes:
+                if cliente._sala_actual == codigo_sala and cliente != emisor:
+                    cliente._enviar(mensaje)
 
     def buscar_cliente_por_usuario(self, id_usuario):
-        for cliente in self._clientes:
-            if cliente._usuario_actual and cliente._usuario_actual.get("idUsuario") == id_usuario:
-                return cliente
+        with self._lock:
+            for cliente in self._clientes:
+                if cliente._usuario_actual and cliente._usuario_actual.get("idUsuario") == id_usuario:
+                    return cliente
         return None
 
 if __name__ == "__main__":

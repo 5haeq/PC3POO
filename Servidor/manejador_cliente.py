@@ -38,6 +38,7 @@ class ManejadorCliente:
                 break
         print(f"[DESCONEXIÓN] Cliente {self._direccion} se ha desconectado")
         self._conexion.close()
+        self._servidor.remover_cliente(self)
 
     def _procesar_mensaje(self, mensaje):
         tipo = mensaje.get("type")
