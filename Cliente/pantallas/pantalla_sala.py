@@ -1,17 +1,12 @@
 import base64
 import os
+import platform
 import shutil
 import subprocess
 import threading
 import time
 import tkinter as tk
 from tkinter import filedialog, scrolledtext
-
-try:
-    import cv2
-    _BACKEND_VIDEO = "opencv"
-except ImportError:
-    _BACKEND_VIDEO = "ffmpeg" if shutil.which("ffmpeg") else None
 
 from Cliente.pantallas.pantalla_video import PanelVideo
 
@@ -59,6 +54,7 @@ class PantallaSala(tk.Frame):
         self._capturando = False
         self._video_panel_local = None
         self._video_proc = None
+        self._backend_video = None
 
         frame_principal = tk.Frame(self)
         frame_principal.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
@@ -184,10 +180,26 @@ class PantallaSala(tk.Frame):
         self._chat_text.see(tk.END)
         self._chat_text.config(state=tk.DISABLED)
 
+    @staticmethod
+    def _detectar_backend():
+        if platform.system() == "Windows":
+            try:
+                import cv2
+                return "opencv"
+            except ImportError:
+                return None
+        try:
+            import cv2
+            return "opencv"
+        except ImportError:
+            return "ffmpeg" if shutil.which("ffmpeg") else None
+
     def _toggle_camara(self):
-        if not _BACKEND_VIDEO:
-            self._agregar_mensaje("❌ No hay backend de cámara disponible. Instala 'opencv-python' o 'ffmpeg'.")
+        backend = self._detectar_backend()
+        if not backend:
+            self._agregar_mensaje("❌ No hay backend de cámara. En Windows instala 'opencv-python'; en Linux instala ffmpeg.")
             return
+        self._backend_video = backend
         if self._camara_activa:
             self._detener_captura()
         else:
@@ -217,7 +229,7 @@ class PantallaSala(tk.Frame):
 
     def _capturar_y_enviar(self):
         try:
-            if _BACKEND_VIDEO == "opencv":
+            if self._backend_video == "opencv":
                 self._capturar_con_opencv()
             else:
                 self._capturar_con_ffmpeg()
@@ -226,6 +238,7 @@ class PantallaSala(tk.Frame):
             self.after(0, self._detener_captura)
 
     def _capturar_con_opencv(self):
+        import cv2
         cap = cv2.VideoCapture(0)
         if not cap.isOpened():
             self.after(0, self._agregar_mensaje, "❌ No se pudo abrir la cámara.")
