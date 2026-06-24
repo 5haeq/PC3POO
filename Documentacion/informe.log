@@ -1,4 +1,4 @@
-This is LuaHBTeX, Version 1.24.0 (TeX Live 2026/Arch Linux)  (format=lualatex 2026.6.24)  24 JUN 2026 16:29
+This is LuaHBTeX, Version 1.24.0 (TeX Live 2026/Arch Linux)  (format=lualatex 2026.6.24)  24 JUN 2026 16:32
  restricted system commands enabled.
 **informe.tex
 (./informe.tex
@@ -580,7 +580,7 @@ f-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb></usr/share/texmf-dist/fonts/typ
 e1/public/amsfonts/cm/cmr17.pfb></usr/share/texmf-dist/fonts/type1/public/amsfon
 ts/cm/cmr6.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb>
 </usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb>
-Output written on informe.pdf (14 pages, 122385 bytes).
+Output written on informe.pdf (14 pages, 122390 bytes).
 
 PDF statistics: 439 PDF objects out of 1000 (max. 8388607)
  412 compressed objects within 5 object streams
