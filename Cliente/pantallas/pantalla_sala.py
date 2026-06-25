@@ -96,6 +96,14 @@ class PantallaSala(tk.Frame):
                   bg="#2196F3", fg="white").pack(side=tk.RIGHT, padx=(2, 0))
         tk.Button(frame_input, text="📎 Archivo", command=self._enviar_archivo,
                   bg="#9C27B0", fg="white").pack(side=tk.RIGHT, padx=(0, 2))
+        self._btn_abrir_descargas = tk.Button(
+            frame_input,
+            text="Abrir carpeta de descargas",
+            command=self._abrir_carpeta_descargas,
+            bg="#607D8B",
+            fg="white",
+        )
+        self._btn_abrir_descargas.pack(side=tk.RIGHT, padx=(0, 2))
 
         tk.Button(self, text="Salir de la Sala", command=self._salir,
                   bg="#f44336", fg="white", font=("Arial", 10)).pack(pady=10)
@@ -182,23 +190,13 @@ class PantallaSala(tk.Frame):
 
     def _agregar_mensaje_descargas(self, texto):
         self._chat_text.config(state=tk.NORMAL)
-        self._chat_text.insert(tk.END, texto + " ")
-
-        inicio_enlace = self._chat_text.index(tk.END)
-        self._chat_text.insert(tk.END, "Abrir carpeta de descargas\n")
-        fin_enlace = self._chat_text.index(tk.END)
-
-        self._chat_text.tag_add("enlace_descargas", inicio_enlace, f"{fin_enlace} -1c")
-        self._chat_text.tag_config("enlace_descargas", foreground="#1565C0", underline=True)
-        self._chat_text.tag_bind("enlace_descargas", "<Button-1>", self._abrir_carpeta_descargas)
-        self._chat_text.tag_bind("enlace_descargas", "<Enter>", lambda e: self._chat_text.config(cursor="hand2"))
-        self._chat_text.tag_bind("enlace_descargas", "<Leave>", lambda e: self._chat_text.config(cursor=""))
-
+        self._chat_text.insert(tk.END, texto + "\n")
         self._chat_text.see(tk.END)
         self._chat_text.config(state=tk.DISABLED)
 
     def _abrir_carpeta_descargas(self, event=None):
         ruta = os.path.abspath(self._download_dir)
+        os.makedirs(ruta, exist_ok=True)
         try:
             if platform.system() == "Windows":
                 os.startfile(ruta)
@@ -208,7 +206,6 @@ class PantallaSala(tk.Frame):
                 subprocess.Popen(["xdg-open", ruta])
         except Exception as e:
             self._agregar_mensaje(f"❌ No se pudo abrir la carpeta de descargas: {e}")
-        return "break"
 
     @staticmethod
     def _detectar_backend():
