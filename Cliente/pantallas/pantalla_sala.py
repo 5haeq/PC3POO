@@ -180,6 +180,36 @@ class PantallaSala(tk.Frame):
         self._chat_text.see(tk.END)
         self._chat_text.config(state=tk.DISABLED)
 
+    def _agregar_mensaje_descargas(self, texto):
+        self._chat_text.config(state=tk.NORMAL)
+        self._chat_text.insert(tk.END, texto + " ")
+
+        inicio_enlace = self._chat_text.index(tk.END)
+        self._chat_text.insert(tk.END, "Abrir carpeta de descargas\n")
+        fin_enlace = self._chat_text.index(tk.END)
+
+        self._chat_text.tag_add("enlace_descargas", inicio_enlace, f"{fin_enlace} -1c")
+        self._chat_text.tag_config("enlace_descargas", foreground="#1565C0", underline=True)
+        self._chat_text.tag_bind("enlace_descargas", "<Button-1>", self._abrir_carpeta_descargas)
+        self._chat_text.tag_bind("enlace_descargas", "<Enter>", lambda e: self._chat_text.config(cursor="hand2"))
+        self._chat_text.tag_bind("enlace_descargas", "<Leave>", lambda e: self._chat_text.config(cursor=""))
+
+        self._chat_text.see(tk.END)
+        self._chat_text.config(state=tk.DISABLED)
+
+    def _abrir_carpeta_descargas(self, event=None):
+        ruta = os.path.abspath(self._download_dir)
+        try:
+            if platform.system() == "Windows":
+                os.startfile(ruta)
+            elif platform.system() == "Darwin":
+                subprocess.Popen(["open", ruta])
+            else:
+                subprocess.Popen(["xdg-open", ruta])
+        except Exception as e:
+            self._agregar_mensaje(f"❌ No se pudo abrir la carpeta de descargas: {e}")
+        return "break"
+
     @staticmethod
     def _detectar_backend():
         if platform.system() == "Windows":
@@ -265,8 +295,7 @@ class PantallaSala(tk.Frame):
             self.after(0, lambda b=datos_b64: self._video_panel_local.actualizar_frame(b)
                        if self._video_panel_local else None)
 
-            time.sleep(0.1)
-
+            time.sleep(0.1) #Intervalo de 100 ms para limitar la tasa de envío
         cap.release()
 
     def _capturar_con_ffmpeg(self):
@@ -439,7 +468,7 @@ class PantallaSala(tk.Frame):
             ruta = os.path.join(self._download_dir, rid)
             with open(ruta, "wb") as f:
                 f.write(datos)
-            self.after(0, self._agregar_mensaje, f"✅ Archivo recibido: {rid} (guardado en descargas/)")
+            self.after(0, self._agregar_mensaje_descargas, f"✅ Archivo recibido: {rid} (guardado en descargas/)")
         except Exception as e:
             self.after(0, self._agregar_mensaje, f"❌ Error al guardar {rid}: {e}")
 
