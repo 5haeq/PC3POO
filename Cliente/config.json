@@ -1,5 +1,5 @@
 {
     "servidor_host": "0.tcp.sa.ngrok.io",
-    "servidor_puerto": 14475,
-    "ip_a_usar": "tcp://0.tcp.sa.ngrok.io:14475"
+    "servidor_puerto": 21589,
+    "ip_a_usar": "tcp://0.tcp.sa.ngrok.io:21589"
 }
